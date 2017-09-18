@@ -13,6 +13,8 @@ import (
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/davidlazar/go-crypto/encoding/base32"
 )
 
 // tokenKind determines type of a token.
@@ -658,6 +660,27 @@ func (r *Lexer) Bytes() []byte {
 
 	r.consume()
 	return ret[:len]
+}
+
+// Bytes reads a string literal and base32 decodes it into a byte slice.
+func (r *Lexer) BytesReadable() []byte {
+	if r.token.kind == tokenUndef && r.Ok() {
+		r.FetchToken()
+	}
+	if !r.Ok() || r.token.kind != tokenString {
+		r.errInvalidToken("string")
+		return nil
+	}
+	data, err := base32.DecodeString(string(r.token.byteValue))
+	if err != nil {
+		r.fatalError = &LexerError{
+			Reason: err.Error(),
+		}
+		return nil
+	}
+
+	r.consume()
+	return data
 }
 
 // Bool reads a true or false boolean keyword.

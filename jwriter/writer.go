@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/davidlazar/easyjson/buffer"
+	"github.com/davidlazar/go-crypto/encoding/base32"
 )
 
 // Flags describe various encoding options. The behavior may be actually implemented in the encoder, but
@@ -108,6 +109,18 @@ func (w *Writer) Base64Bytes(data []byte) {
 	dst := make([]byte, base64.StdEncoding.EncodedLen(len(data)))
 	base64.StdEncoding.Encode(dst, data)
 	w.Buffer.AppendBytes(dst)
+	w.Buffer.AppendByte('"')
+}
+
+// Base32Bytes appends data to the buffer after base32 encoding it
+func (w *Writer) Base32Bytes(data []byte) {
+	if data == nil {
+		w.Buffer.AppendString("null")
+		return
+	}
+	w.Buffer.AppendByte('"')
+	str := base32.EncodeToString(data)
+	w.Buffer.AppendString(str)
 	w.Buffer.AppendByte('"')
 }
 

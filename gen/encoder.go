@@ -81,7 +81,7 @@ func parseFieldTags(f reflect.StructField) fieldTags {
 }
 
 // genTypeEncoder generates code that encodes in of type t into the writer, but uses marshaler interface if implemented by t.
-func (g *Generator) genTypeEncoder(t reflect.Type, in string, tags fieldTags, indent int) error {
+func (g *Generator) genTypeEncoder(t reflect.Type, in string, tags fieldTags, indent int, readable bool) error {
 	ws := strings.Repeat("  ", indent)
 
 	marshalerIface := reflect.TypeOf((*easyjson.Marshaler)(nil)).Elem()
@@ -102,12 +102,12 @@ func (g *Generator) genTypeEncoder(t reflect.Type, in string, tags fieldTags, in
 		return nil
 	}
 
-	err := g.genTypeEncoderNoCheck(t, in, tags, indent)
+	err := g.genTypeEncoderNoCheck(t, in, tags, indent, readable)
 	return err
 }
 
 // genTypeEncoderNoCheck generates code that encodes in of type t into the writer.
-func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldTags, indent int) error {
+func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldTags, indent int, readable bool) error {
 	ws := strings.Repeat("  ", indent)
 
 	// Check whether type is primitive, needs to be done after interface check.
@@ -126,7 +126,11 @@ func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldT
 		vVar := g.uniqueVarName()
 
 		if t.Elem().Kind() == reflect.Uint8 {
-			fmt.Fprintln(g.out, ws+"out.Base64Bytes("+in+")")
+			if readable {
+				fmt.Fprintln(g.out, ws+"out.Base32Bytes("+in+")")
+			} else {
+				fmt.Fprintln(g.out, ws+"out.Base64Bytes("+in+")")
+			}
 		} else {
 			fmt.Fprintln(g.out, ws+"if "+in+" == nil && (out.Flags & jwriter.NilSliceAsEmpty) == 0 {")
 			fmt.Fprintln(g.out, ws+`  out.RawString("null")`)
@@ -137,7 +141,7 @@ func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldT
 			fmt.Fprintln(g.out, ws+"      out.RawByte(',')")
 			fmt.Fprintln(g.out, ws+"    }")
 
-			g.genTypeEncoder(elem, vVar, tags, indent+2)
+			g.genTypeEncoder(elem, vVar, tags, indent+2, readable)
 
 			fmt.Fprintln(g.out, ws+"  }")
 			fmt.Fprintln(g.out, ws+"  out.RawByte(']')")
@@ -149,7 +153,11 @@ func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldT
 		iVar := g.uniqueVarName()
 
 		if t.Elem().Kind() == reflect.Uint8 {
-			fmt.Fprintln(g.out, ws+"out.Base64Bytes("+in+"[:])")
+			if readable {
+				fmt.Fprintln(g.out, ws+"out.Base32Bytes("+in+"[:])")
+			} else {
+				fmt.Fprintln(g.out, ws+"out.Base64Bytes("+in+"[:])")
+			}
 		} else {
 			fmt.Fprintln(g.out, ws+"out.RawByte('[')")
 			fmt.Fprintln(g.out, ws+"for "+iVar+" := range "+in+" {")
@@ -157,7 +165,7 @@ func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldT
 			fmt.Fprintln(g.out, ws+"    out.RawByte(',')")
 			fmt.Fprintln(g.out, ws+"  }")
 
-			g.genTypeEncoder(elem, in+"["+iVar+"]", tags, indent+1)
+			g.genTypeEncoder(elem, in+"["+iVar+"]", tags, indent+1, readable)
 
 			fmt.Fprintln(g.out, ws+"}")
 			fmt.Fprintln(g.out, ws+"out.RawByte(']')")
@@ -174,7 +182,7 @@ func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldT
 		fmt.Fprintln(g.out, ws+`  out.RawString("null")`)
 		fmt.Fprintln(g.out, ws+"} else {")
 
-		g.genTypeEncoder(t.Elem(), "*"+in, tags, indent+1)
+		g.genTypeEncoder(t.Elem(), "*"+in, tags, indent+1, readable)
 
 		fmt.Fprintln(g.out, ws+"}")
 
@@ -196,7 +204,7 @@ func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldT
 		fmt.Fprintln(g.out, ws+"    out.String(string("+tmpVar+"Name))")
 		fmt.Fprintln(g.out, ws+"    out.RawByte(':')")
 
-		g.genTypeEncoder(t.Elem(), tmpVar+"Value", tags, indent+2)
+		g.genTypeEncoder(t.Elem(), tmpVar+"Value", tags, indent+2, readable)
 
 		fmt.Fprintln(g.out, ws+"  }")
 		fmt.Fprintln(g.out, ws+"  out.RawByte('}')")
@@ -244,7 +252,7 @@ func (g *Generator) notEmptyCheck(t reflect.Type, v string) string {
 	}
 }
 
-func (g *Generator) genStructFieldEncoder(t reflect.Type, f reflect.StructField) error {
+func (g *Generator) genStructFieldEncoder(t reflect.Type, f reflect.StructField, readable bool) error {
 	jsonName := g.fieldNamer.GetJSONFieldName(t, f)
 	tags := parseFieldTags(f)
 
@@ -255,7 +263,7 @@ func (g *Generator) genStructFieldEncoder(t reflect.Type, f reflect.StructField)
 		fmt.Fprintln(g.out, "  if !first { out.RawByte(',') }")
 		fmt.Fprintln(g.out, "  first = false")
 		fmt.Fprintf(g.out, "  out.RawString(%q)\n", strconv.Quote(jsonName)+":")
-		return g.genTypeEncoder(f.Type, "in."+f.Name, tags, 1)
+		return g.genTypeEncoder(f.Type, "in."+f.Name, tags, 1, readable)
 	}
 
 	fmt.Fprintln(g.out, "  if", g.notEmptyCheck(f.Type, "in."+f.Name), "{")
@@ -263,7 +271,7 @@ func (g *Generator) genStructFieldEncoder(t reflect.Type, f reflect.StructField)
 	fmt.Fprintln(g.out, "    first = false")
 
 	fmt.Fprintf(g.out, "    out.RawString(%q)\n", strconv.Quote(jsonName)+":")
-	if err := g.genTypeEncoder(f.Type, "in."+f.Name, tags, 2); err != nil {
+	if err := g.genTypeEncoder(f.Type, "in."+f.Name, tags, 2, readable); err != nil {
 		return err
 	}
 	fmt.Fprintln(g.out, "  }")
@@ -288,9 +296,10 @@ func (g *Generator) genSliceArrayMapEncoder(t reflect.Type) error {
 
 	fname := g.getEncoderName(t)
 	typ := g.getType(t)
+	readable := hasTag(g.typesTags[t], "readable")
 
 	fmt.Fprintln(g.out, "func "+fname+"(out *jwriter.Writer, in "+typ+") {")
-	err := g.genTypeEncoderNoCheck(t, "in", fieldTags{}, 1)
+	err := g.genTypeEncoderNoCheck(t, "in", fieldTags{}, 1, readable)
 	if err != nil {
 		return err
 	}
@@ -305,6 +314,7 @@ func (g *Generator) genStructEncoder(t reflect.Type) error {
 
 	fname := g.getEncoderName(t)
 	typ := g.getType(t)
+	readable := hasTag(g.typesTags[t], "readable")
 
 	fmt.Fprintln(g.out, "func "+fname+"(out *jwriter.Writer, in "+typ+") {")
 	fmt.Fprintln(g.out, "  out.RawByte('{')")
@@ -316,7 +326,7 @@ func (g *Generator) genStructEncoder(t reflect.Type) error {
 		return fmt.Errorf("cannot generate encoder for %v: %v", t, err)
 	}
 	for _, f := range fs {
-		if err := g.genStructFieldEncoder(t, f); err != nil {
+		if err := g.genStructFieldEncoder(t, f, readable); err != nil {
 			return err
 		}
 	}
