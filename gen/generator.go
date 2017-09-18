@@ -336,24 +336,11 @@ func (g *Generator) uniqueVarName() string {
 // safeName escapes unsafe characters in pkg/type name and returns a string that can be used
 // in encoder/decoder names for the type.
 func (g *Generator) safeName(t reflect.Type) string {
-	name := t.PkgPath()
-	if t.Name() == "" {
-		name += "anonymous"
-	} else {
-		name += "." + t.Name()
+	name := t.Name()
+	if name == "" {
+		return "anonymous"
 	}
-
-	parts := []string{}
-	part := []rune{}
-	for _, c := range name {
-		if unicode.IsLetter(c) || unicode.IsDigit(c) {
-			part = append(part, c)
-		} else if len(part) > 0 {
-			parts = append(parts, string(part))
-			part = []rune{}
-		}
-	}
-	return joinFunctionNameParts(false, parts...)
+	return name
 }
 
 // functionName returns a function name for a given type with a given prefix. If a function
@@ -361,8 +348,8 @@ func (g *Generator) safeName(t reflect.Type) string {
 //
 // Method is used to track encoder/decoder names for the type.
 func (g *Generator) functionName(prefix string, t reflect.Type) string {
-	prefix = joinFunctionNameParts(true, "easyjson", g.hashString, prefix)
-	name := joinFunctionNameParts(true, prefix, g.safeName(t))
+	prefix = joinFunctionNameParts(true, "easyjson", prefix)
+	name := joinFunctionNameParts(true, prefix, g.safeName(t), g.hashString)
 
 	// Most of the names will be unique, try a shortcut first.
 	if e, ok := g.functionNames[name]; !ok || e == t {
