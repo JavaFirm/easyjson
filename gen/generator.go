@@ -46,6 +46,9 @@ type Generator struct {
 	// types that encoders were already generated for
 	typesSeen map[reflect.Type]bool
 
+	// easyjson tags specified in struct comment
+	typesTags map[reflect.Type][]string
+
 	// types that encoders were requested for (e.g. by encoders of other types)
 	typesUnseen []reflect.Type
 
@@ -66,6 +69,7 @@ func NewGenerator(filename string) *Generator {
 		fieldNamer:    DefaultFieldNamer{},
 		marshalers:    make(map[reflect.Type]bool),
 		typesSeen:     make(map[reflect.Type]bool),
+		typesTags:     make(map[reflect.Type][]string),
 		functionNames: make(map[string]reflect.Type),
 	}
 
@@ -130,13 +134,14 @@ func (g *Generator) addType(t reflect.Type) {
 
 // Add requests to generate marshaler/unmarshalers and encoding/decoding
 // funcs for the type of given object.
-func (g *Generator) Add(obj interface{}) {
+func (g *Generator) Add(obj interface{}, tags []string) {
 	t := reflect.TypeOf(obj)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 	g.addType(t)
 	g.marshalers[t] = true
+	g.typesTags[t] = tags
 }
 
 // printHeader prints package declaration and imports.
@@ -184,23 +189,35 @@ func (g *Generator) Run(out io.Writer) error {
 		t := g.typesUnseen[len(g.typesUnseen)-1]
 		g.typesUnseen = g.typesUnseen[:len(g.typesUnseen)-1]
 		g.typesSeen[t] = true
+		tags := g.typesTags[t]
 
-		if err := g.genDecoder(t); err != nil {
-			return err
+		marshal := !hasTag(tags, "nomarshal")
+		unmarshal := !hasTag(tags, "nounmarshal")
+
+		if unmarshal {
+			if err := g.genDecoder(t); err != nil {
+				return err
+			}
 		}
-		if err := g.genEncoder(t); err != nil {
-			return err
+		if marshal {
+			if err := g.genEncoder(t); err != nil {
+				return err
+			}
 		}
 
 		if !g.marshalers[t] {
 			continue
 		}
 
-		if err := g.genStructMarshaler(t); err != nil {
-			return err
+		if marshal {
+			if err := g.genStructMarshaler(t); err != nil {
+				return err
+			}
 		}
-		if err := g.genStructUnmarshaler(t); err != nil {
-			return err
+		if unmarshal {
+			if err := g.genStructUnmarshaler(t); err != nil {
+				return err
+			}
 		}
 	}
 	g.printHeader()
@@ -520,4 +537,13 @@ func joinFunctionNameParts(keepFirst bool, parts ...string) string {
 		}
 	}
 	return buf.String()
+}
+
+func hasTag(tags []string, tag string) bool {
+	for _, s := range tags {
+		if s == tag {
+			return true
+		}
+	}
+	return false
 }

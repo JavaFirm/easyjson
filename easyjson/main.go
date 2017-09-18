@@ -63,7 +63,7 @@ func generate(fname string) (err error) {
 		BuildTags:       trimmedBuildTags,
 		PkgPath:         p.PkgPath,
 		PkgName:         p.PkgName,
-		Types:           p.StructNames,
+		Types:           p.Types,
 		SnakeCase:       *snakeCase,
 		LowerCamelCase:  *lowerCamelCase,
 		NoStdMarshalers: *noStdMarshalers,

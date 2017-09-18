@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+
+	"github.com/davidlazar/easyjson/parser"
 )
 
 const genPackage = "github.com/davidlazar/easyjson/gen"
@@ -20,7 +22,7 @@ const pkgLexer = "github.com/davidlazar/easyjson/jlexer"
 
 type Generator struct {
 	PkgPath, PkgName string
-	Types            []string
+	Types            []parser.TypeInfo
 
 	NoStdMarshalers bool
 	SnakeCase       bool
@@ -61,18 +63,29 @@ func (g *Generator) writeStub() error {
 		fmt.Fprintln(f, ")")
 	}
 
-	sort.Strings(g.Types)
+	sort.Slice(g.Types, func(i, j int) bool { return g.Types[i].Name < g.Types[j].Name })
 	for _, t := range g.Types {
+		marshal := !hasTag(t.Tags, "nomarshal")
+		unmarshal := !hasTag(t.Tags, "nounmarshal")
+
 		fmt.Fprintln(f)
 		if !g.NoStdMarshalers {
-			fmt.Fprintln(f, "func (", t, ") MarshalJSON() ([]byte, error) { return nil, nil }")
-			fmt.Fprintln(f, "func (*", t, ") UnmarshalJSON([]byte) error { return nil }")
+			if marshal {
+				fmt.Fprintln(f, "func (", t.Name, ") MarshalJSON() ([]byte, error) { return nil, nil }")
+			}
+			if unmarshal {
+				fmt.Fprintln(f, "func (*", t.Name, ") UnmarshalJSON([]byte) error { return nil }")
+			}
 		}
 
-		fmt.Fprintln(f, "func (", t, ") MarshalEasyJSON(w *jwriter.Writer) {}")
-		fmt.Fprintln(f, "func (*", t, ") UnmarshalEasyJSON(l *jlexer.Lexer) {}")
+		if marshal {
+			fmt.Fprintln(f, "func (", t.Name, ") MarshalEasyJSON(w *jwriter.Writer) {}")
+		}
+		if unmarshal {
+			fmt.Fprintln(f, "func (*", t.Name, ") UnmarshalEasyJSON(l *jlexer.Lexer) {}")
+		}
 		fmt.Fprintln(f)
-		fmt.Fprintln(f, "type EasyJSON_exporter_"+t+" *"+t)
+		fmt.Fprintln(f, "type EasyJSON_exporter_"+t.Name+" *"+t.Name)
 	}
 	return nil
 }
@@ -121,9 +134,9 @@ func (g *Generator) writeMain() (path string, err error) {
 		fmt.Fprintln(f, "  g.NoStdMarshalers()")
 	}
 
-	sort.Strings(g.Types)
+	sort.Slice(g.Types, func(i, j int) bool { return g.Types[i].Name < g.Types[j].Name })
 	for _, v := range g.Types {
-		fmt.Fprintln(f, "  g.Add(pkg.EasyJSON_exporter_"+v+"(nil))")
+		fmt.Fprintf(f, "  g.Add(pkg.EasyJSON_exporter_"+v.Name+"(nil), %#v)\n", v.Tags)
 	}
 
 	fmt.Fprintln(f, "  if err := g.Run(os.Stdout); err != nil {")
@@ -185,4 +198,13 @@ func (g *Generator) Run() error {
 	}
 
 	return os.Rename(f.Name(), g.OutName)
+}
+
+func hasTag(tags []string, tag string) bool {
+	for _, s := range tags {
+		if s == tag {
+			return true
+		}
+	}
+	return false
 }

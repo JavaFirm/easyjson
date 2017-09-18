@@ -7,29 +7,35 @@ import (
 	"strings"
 )
 
-const structComment = "easyjson:json"
+const commentPrefix = "easyjson:"
 
 type Parser struct {
-	PkgPath     string
-	PkgName     string
-	StructNames []string
-	AllStructs  bool
+	PkgPath    string
+	PkgName    string
+	Types      []TypeInfo
+	AllStructs bool
+}
+
+type TypeInfo struct {
+	Name string
+	Tags []string
 }
 
 type visitor struct {
 	*Parser
 
-	name     string
-	explicit bool
+	name string
+	tags []string
 }
 
-func (p *Parser) needType(comments string) bool {
+func (p *Parser) easyTags(comments string) []string {
 	for _, v := range strings.Split(comments, "\n") {
-		if strings.HasPrefix(v, structComment) {
-			return true
+		if strings.HasPrefix(v, commentPrefix) {
+			v = strings.TrimPrefix(v, commentPrefix)
+			return strings.Split(v, ",")
 		}
 	}
-	return false
+	return nil
 }
 
 func (v *visitor) Visit(n ast.Node) (w ast.Visitor) {
@@ -41,9 +47,9 @@ func (v *visitor) Visit(n ast.Node) (w ast.Visitor) {
 		return v
 
 	case *ast.GenDecl:
-		v.explicit = v.needType(n.Doc.Text())
+		v.tags = v.easyTags(n.Doc.Text())
 
-		if !v.explicit && !v.AllStructs {
+		if v.tags == nil && !v.AllStructs {
 			return nil
 		}
 		return v
@@ -51,13 +57,13 @@ func (v *visitor) Visit(n ast.Node) (w ast.Visitor) {
 		v.name = n.Name.String()
 
 		// Allow to specify non-structs explicitly independent of '-all' flag.
-		if v.explicit {
-			v.StructNames = append(v.StructNames, v.name)
+		if v.tags != nil {
+			v.Types = append(v.Types, TypeInfo{Name: v.name, Tags: v.tags})
 			return nil
 		}
 		return v
 	case *ast.StructType:
-		v.StructNames = append(v.StructNames, v.name)
+		v.Types = append(v.Types, TypeInfo{Name: v.name, Tags: v.tags})
 		return nil
 	}
 	return nil
