@@ -194,7 +194,7 @@ func (g *Generator) genTypeDecoderNoCheck(t reflect.Type, out string, tags field
 		fmt.Fprintln(g.out, ws+"    "+out+" = new("+g.getType(t.Elem())+")")
 		fmt.Fprintln(g.out, ws+"  }")
 
-		g.genTypeDecoder(t.Elem(), "*"+out, tags, indent+1, readable)
+		g.genTypeDecoder(t.Elem(), "(*"+out+")", tags, indent+1, readable)
 
 		fmt.Fprintln(g.out, ws+"}")
 

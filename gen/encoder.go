@@ -182,7 +182,7 @@ func (g *Generator) genTypeEncoderNoCheck(t reflect.Type, in string, tags fieldT
 		fmt.Fprintln(g.out, ws+`  out.RawString("null")`)
 		fmt.Fprintln(g.out, ws+"} else {")
 
-		g.genTypeEncoder(t.Elem(), "*"+in, tags, indent+1, readable)
+		g.genTypeEncoder(t.Elem(), "(*"+in+")", tags, indent+1, readable)
 
 		fmt.Fprintln(g.out, ws+"}")
 
